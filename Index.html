@@ -1,0 +1,170 @@
+<meta name='viewport' content='width=device-width, initial-scale=1'/><!DOCTYPE html><html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fast Space War Shooter</title>
+<style>
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    background:#020617;
+    font-family:'Comic Sans MS', cursive, sans-serif;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    color:#e5e7eb;
+  }
+  #gameWrap{text-align:center}
+  canvas{
+    background:#020617;
+    border:3px solid #22d3ee;
+    border-radius:16px;
+    touch-action:none;
+  }
+  .hud{
+    margin-top:8px;
+    display:flex;
+    justify-content:space-between;
+    font-size:16px;
+    font-weight:bold;
+  }
+  button{
+    margin-top:10px;
+    padding:10px 22px;
+    border:none;
+    border-radius:14px;
+    background:#22c55e;
+    font-size:16px;
+    cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div id="gameWrap">
+  <canvas id="game" width="360" height="520"></canvas>
+  <div class="hud">
+    <div>⭐ <span id="score">0</span></div>
+    <div>❤️ <span id="lives">5</span></div>
+    <div>Lv <span id="level">1</span></div>
+  </div>
+  <button onclick="startGame()">Play</button>
+</div><script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const livesEl = document.getElementById('lives');
+const levelEl = document.getElementById('level');
+
+let enemies=[], enemyBullets=[], lasers=[], explosions=[], stars=[];
+let score=0, lives=5, level=1, running=false;
+let firing=false, blinkTimer=0;
+
+const ship={x:canvas.width/2,y:canvas.height-80};
+let enemySpeed=1.5, spawnRate=800;
+let spawnTimer;
+
+// 🎵 AUDIO
+const audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+function laserSound(){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type='square'; o.frequency.value=800; g.gain.value=0.05;
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+0.05);
+}
+function explosionSound(){
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type='triangle';
+  o.frequency.setValueAtTime(200,audioCtx.currentTime);
+  o.frequency.exponentialRampToValueAtTime(60,audioCtx.currentTime+0.3);
+  g.gain.value=0.08;
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); o.stop(audioCtx.currentTime+0.3);
+}
+
+// 🌌 STARS
+for(let i=0;i<120;i++) stars.push({x:Math.random()*360,y:Math.random()*520,s:1+Math.random()*2});
+
+function startGame(){
+  score=0; lives=5; level=1;
+  enemies=[]; enemyBullets=[]; lasers=[]; explosions=[];
+  enemySpeed=1.5; spawnRate=800;
+  running=true;
+  scoreEl.textContent=score; livesEl.textContent=lives; levelEl.textContent=level;
+  clearInterval(spawnTimer);
+  spawnTimer=setInterval(spawnEnemy,spawnRate);
+}
+
+function spawnEnemy(){
+  if(!running) return;
+  enemies.push({x:Math.random()*300+30,y:-40,dy:enemySpeed,shoot:80});
+}
+
+// 🎮 CONTROLS
+canvas.addEventListener('touchstart',e=>{firing=true;move(e)});
+canvas.addEventListener('touchmove',e=>move(e));
+canvas.addEventListener('touchend',()=>firing=false);
+canvas.addEventListener('mousedown',()=>firing=true);
+canvas.addEventListener('mouseup',()=>firing=false);
+canvas.addEventListener('mousemove',e=>ship.x=e.offsetX);
+function move(e){ship.x=e.touches[0].clientX-canvas.getBoundingClientRect().left}
+
+function fireLaser(){
+  laserSound();
+  lasers.push({x:ship.x,y:ship.y});
+}
+
+function explode(x,y){ explosionSound(); explosions.push({x,y,r:2}); }
+
+function drawShip(){
+  if(blinkTimer>0){blinkTimer--; if(blinkTimer%6<3) return;}
+  ctx.save(); ctx.translate(ship.x,ship.y);
+  ctx.fillStyle='#22d3ee';
+  ctx.beginPath();
+  ctx.moveTo(-28,35); ctx.lineTo(-14,-25); ctx.lineTo(0,-50); ctx.lineTo(14,-25); ctx.lineTo(28,35); ctx.lineTo(10,20); ctx.lineTo(-10,20);
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawEnemy(e){
+  ctx.save(); ctx.translate(e.x,e.y);
+  ctx.fillStyle='#fb7185';
+  ctx.beginPath();
+  ctx.moveTo(-24,-35); ctx.lineTo(-12,20); ctx.lineTo(0,40); ctx.lineTo(12,20); ctx.lineTo(24,-35); ctx.lineTo(8,-18); ctx.lineTo(-8,-18);
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+function update(){
+  ctx.fillStyle='#020617'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  stars.forEach(s=>{ctx.fillStyle='#e0f2fe'; ctx.fillRect(s.x,s.y,s.s,s.s); s.y+=s.s; if(s.y>520)s.y=0});
+
+  if(!running){drawShip(); requestAnimationFrame(update); return;}
+
+  if(firing && Math.random()<0.4) fireLaser();
+
+  ctx.strokeStyle='#22d3ee'; ctx.lineWidth=4;
+  for(let i=lasers.length-1;i>=0;i--){const l=lasers[i]; l.y-=12; ctx.beginPath(); ctx.moveTo(l.x,l.y); ctx.lineTo(l.x,l.y+18); ctx.stroke(); if(l.y<0) lasers.splice(i,1)}
+
+  enemies.forEach((e,i)=>{
+    e.y+=e.dy; drawEnemy(e);
+    if(--e.shoot<=0){enemyBullets.push({x:e.x,y:e.y}); e.shoot=80}
+    lasers.forEach((l,j)=>{if(Math.abs(l.x-e.x)<25&&Math.abs(l.y-e.y)<25){explode(e.x,e.y); enemies.splice(i,1); lasers.splice(j,1); score++; scoreEl.textContent=score}});
+  });
+
+  ctx.strokeStyle='#fb7185'; ctx.lineWidth=3;
+  for(let i=enemyBullets.length-1;i>=0;i--){const b=enemyBullets[i]; b.y+=6; ctx.beginPath(); ctx.moveTo(b.x,b.y); ctx.lineTo(b.x,b.y-12); ctx.stroke(); if(Math.abs(b.x-ship.x)<18&&Math.abs(b.y-ship.y)<18){enemyBullets.splice(i,1); lives--; livesEl.textContent=lives; blinkTimer=30} if(b.y>520) enemyBullets.splice(i,1)}
+
+  explosions.forEach((ex,i)=>{ex.r+=2; ctx.beginPath(); ctx.arc(ex.x,ex.y,ex.r,0,Math.PI*2); ctx.strokeStyle='orange'; ctx.stroke(); if(ex.r>20) explosions.splice(i,1)});
+
+  if(lives<=0){alert('💥 GAME OVER'); running=false}
+
+  drawShip();
+  requestAnimationFrame(update);
+}
+
+setInterval(()=>{ if(!running) return; level++; levelEl.textContent=level; enemySpeed+=0.3; spawnRate=Math.max(250,spawnRate-30); clearInterval(spawnTimer); spawnTimer=setInterval(spawnEnemy,spawnRate); },15000);
+
+update();
+</script></body>
+</html>
